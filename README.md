@@ -4,7 +4,7 @@ A Jython script for Fiji/ImageJ to track fluorescent spots in time-lapse microsc
 
 ## Installation
 
-1. Copy `TrackSpotStack_.py` to your Fiji scripts folder, or just open it in the script manager.
+1. Copy `SpotTrackerGUI.py` to your Fiji scripts folder
 2. Restart Fiji or run `Plugins > Scripting > Refresh Jython Scripts`
 3. Open your time-lapse image
 4. Run the script from `Plugins > Scripts`
@@ -47,6 +47,13 @@ A Jython script for Fiji/ImageJ to track fluorescent spots in time-lapse microsc
 - All ROIs must have the same size
 - Preserves calibration and display settings
 
+**Create Side-by-Side Movie**
+- Creates a combined visualization showing original and cropped views
+- Left side: Original image with all ROIs overlaid (flattened)
+- Right side: Cropped region resized to match original dimensions
+- Useful for presentations and publications to show tracking results
+- Both sides are converted to RGB for consistency
+
 **Save ROIs to OMERO**
 - *Currently not functional* - marked as TODO
 - Intended to save ROIs back to an OMERO server
@@ -63,8 +70,10 @@ A Jython script for Fiji/ImageJ to track fluorescent spots in time-lapse microsc
    - Navigate to that frame
    - Adjust the ROI position manually
    - Click "Re-track from Current Frame"
-8. Add manual annotations using "Add ROI at Current Frame"
-9. Export cropped regions with "Crop Stack from ROIs"
+8. Add manual annotations using "Add ROI at Current Frame" (e.g., to mark specific events)
+9. Export visualizations:
+   - Use "Crop Stack from ROIs" for just the cropped region
+   - Use "Create Side-by-Side Movie" for a combined view showing original with ROIs and cropped view
 
 ## ROI Naming Convention
 
