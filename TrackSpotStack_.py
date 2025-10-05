@@ -1,13 +1,17 @@
 # @ImagePlus imp
 """
 Spot Tracker GUI
-Version: 1.1
+Version: 1.1.1
 Date: 5 October 2025
 Author: Maarten Paul (maarten.paul@gmail.com)
 
 A GUI tool for tracking spots in time-lapse microscopy images with ROI management.
 
 Changelog:
+Version 1.1.1 (5 October 2025):
+- Added "Create Side-by-Side Movie" button for combined visualization
+- Creates movie with original (with ROIs) and cropped/resized views side-by-side
+
 Version 1.1 (5 October 2025):
 - Added "Add ROI at Current Frame" button for manual ROI addition at specific timepoints
 - Added "Create New Focus ROI" button to automatically generate new focus IDs
@@ -65,14 +69,15 @@ class SpotTrackerGUI(JFrame):
         # ROI management buttons
         clear_btn = JButton("Clear All ROIs", actionPerformed=self.clear_rois)
         crop_btn = JButton("Crop Stack from ROIs", actionPerformed=self.crop_stack)
+        sidebyside_btn = JButton("Create Side-by-Side Movie", actionPerformed=self.create_sidebyside_movie)
         omero_btn = JButton("Save ROIs to OMERO", actionPerformed=self.save_to_omero)
         
         # Set preferred size for all buttons
-        buttons = [track_btn, retrack_btn, add_roi_btn, new_focus_btn, clear_btn, crop_btn, omero_btn]
+        buttons = [track_btn, retrack_btn, add_roi_btn, new_focus_btn, clear_btn, crop_btn, sidebyside_btn, omero_btn]
         for btn in buttons:
             btn.setAlignmentX(Component.CENTER_ALIGNMENT)
-            btn.setMaximumSize(Dimension(550, 40))
-            btn.setPreferredSize(Dimension(550, 40))
+            btn.setMaximumSize(Dimension(450, 50))
+            btn.setPreferredSize(Dimension(450, 50))
         
         # Add components with spacing
         # Tracking section
@@ -93,11 +98,13 @@ class SpotTrackerGUI(JFrame):
         panel.add(Box.createRigidArea(Dimension(0, 5)))
         panel.add(crop_btn)
         panel.add(Box.createRigidArea(Dimension(0, 5)))
+        panel.add(sidebyside_btn)
+        panel.add(Box.createRigidArea(Dimension(0, 5)))
         panel.add(omero_btn)
         panel.add(Box.createRigidArea(Dimension(0, 10)))
         
         # Set panel size
-        panel.setPreferredSize(Dimension(650, 400))
+        panel.setPreferredSize(Dimension(500, 500))
         
         self.add(panel)
         self.pack()
@@ -393,6 +400,94 @@ class SpotTrackerGUI(JFrame):
         self.rm.rename(new_index, new_name)
         
         IJ.log("Created new focus ROI: " + new_name + " at frame " + str(current_frame))
+    
+    def create_sidebyside_movie(self, event):
+        """Create side-by-side movie: original with ROIs + cropped and resized"""
+        if not self.imp:
+            IJ.error("No image open")
+            return
+            
+        if self.rm.getCount() == 0:
+            IJ.error("No ROIs in ROI Manager")
+            return
+        
+        # Store original image info
+        original_width = self.imp.getWidth()
+        original_height = self.imp.getHeight()
+        original_title = self.imp.getTitle()
+        
+        # Remove any ROI selection from original image before duplicating
+        self.imp.killRoi()
+        
+        # Duplicate original image for flattening
+        duplicator = Duplicator()
+        flattened = duplicator.run(self.imp, 1, 1, 1, self.imp.getNSlices(), 1, self.imp.getNFrames())
+        flattened.setTitle("Flattened_" + original_title)
+        flattened.show()
+        
+        # Select the flattened image and show all ROIs on it
+        flattened.getWindow().toFront()
+        self.rm.runCommand(flattened, "Show All")
+        IJ.run(flattened, "Flatten", "stack")
+        flattened_result = WindowManager.getCurrentImage()
+        
+        # Create cropped stack
+        first_roi = self.rm.getRoi(0)
+        roi_width = first_roi.getBounds().width
+        roi_height = first_roi.getBounds().height
+        
+        # Check all ROIs have same size
+        for i in range(self.rm.getCount()):
+            roi = self.rm.getRoi(i)
+            if (roi.getBounds().width != roi_width or 
+                roi.getBounds().height != roi_height):
+                IJ.error("All ROIs must have the same size")
+                flattened.close()
+                if flattened_result:
+                    flattened_result.close()
+                return
+        
+        # Create cropped stack
+        stack = ImageStack(roi_width, roi_height)
+        for frame in range(1, self.imp.getNFrames() + 1):
+            roi = None
+            for i in range(self.rm.getCount()):
+                if self.rm.getRoi(i).getPosition() == frame:
+                    roi = self.rm.getRoi(i)
+                    break
+            
+            if roi:
+                self.imp.setPosition(frame)
+                ip = self.imp.getProcessor().duplicate()
+                ip.setRoi(roi)
+                ip = ip.crop()
+                stack.addSlice("", ip)
+        
+        cropped = ImagePlus("Cropped_" + original_title, stack)
+        cropped.setCalibration(self.imp.getCalibration().copy())
+        cropped.show()
+        
+        # Convert cropped to RGB to match flattened image
+        IJ.run(cropped, "RGB Color", "slices")
+        cropped_rgb = WindowManager.getCurrentImage()
+        
+        # Resize cropped to match original dimensions
+        IJ.run(cropped_rgb, "Size...", 
+               "width=" + str(original_width) + 
+               " height=" + str(original_height) + 
+               " depth=" + str(cropped_rgb.getNSlices()) + 
+               " constrain average interpolation=Bicubic")
+        cropped_resized = WindowManager.getCurrentImage()
+        
+        # Combine side by side (stack2 goes to the right)
+        IJ.run(flattened_result, "Combine...", 
+               "stack1=[" + flattened_result.getTitle() + 
+               "] stack2=[" + cropped_resized.getTitle() + "]")
+        
+        combined = WindowManager.getCurrentImage()
+        combined.setTitle("SideBySide_" + original_title)
+        
+        IJ.log("Created side-by-side movie")
 
 # Create and show GUI
 gui = SpotTrackerGUI()
